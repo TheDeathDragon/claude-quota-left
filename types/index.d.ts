@@ -16,6 +16,7 @@ declare module 'claude-code' {
       cache: Shaped<Cache | null>
       spent: Shaped<Spent | null>
       engineCost: number | null
+      subscribed: boolean
     }
   }
 }

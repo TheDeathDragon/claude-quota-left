@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cacheText, cellsOf, contextFrom, contextLeft, costOf, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
+import { cacheText, cellsOf, contextFrom, contextLeft, costOf, isSubscriptionLogin, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
 
 const PRICING = pricingOf({ priceCacheHit: 0.04, priceCacheMiss: 2, priceOutput: 8, offPeakRatio: 0.5, peakHours: '9-12,14-18', peakUtcOffset: 8, currency: '¥' })
 
@@ -183,4 +183,12 @@ test('context left counts to auto-compaction, as /context shows it', async () =>
   const off = contextFrom({ window: 1_000_000 }, { ...(breakdown as object), isAutoCompactEnabled: false } as never)
   expect(off.free).toBe(769_200)
   expect(contextFrom({ tokens: 17_000, window: 1_000_000, percent: 2 }, undefined)).toEqual({ tokens: 17_000, window: 1_000_000, percent: 2 })
+})
+
+test('a subscription login hides cost before any quota reading arrives', async () => {
+  expect(isSubscriptionLogin('claude.ai', undefined)).toBe(true)
+  expect(isSubscriptionLogin(undefined, 'bearer')).toBe(true)
+  expect(isSubscriptionLogin('api-key', 'bearer')).toBe(false)
+  expect(isSubscriptionLogin(undefined, 'api-key')).toBe(false)
+  expect(isSubscriptionLogin(undefined, undefined)).toBe(false)
 })

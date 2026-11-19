@@ -14,6 +14,7 @@ const context = atom({ plugin: 'quota-left', key: 'context' } as const, null, { 
 const cache = atom({ plugin: 'quota-left', key: 'cache' } as const, null, { shape: 'cache-2' })
 const spent = atom({ plugin: 'quota-left', key: 'spent' } as const, null, { shape: 'spent-2' })
 const engineCost = atom({ plugin: 'quota-left', key: 'engineCost' } as const, null)
+const subscribed = atom({ plugin: 'quota-left', key: 'subscribed' } as const, false)
 
 export const formatLeft = (ms: number): string => {
   const minutes = Math.max(0, Math.round(ms / 60_000))
@@ -268,6 +269,22 @@ async function refresh($: EngineInterface, list: Window[]) {
 }
 
 // A ledger holding a model with no known price went at another model's rates: not worth showing.
+// Quota windows only arrive with the first reply, so the login decides from the start whether this is a
+// subscription. identity() names a claude.ai login, but the privacy mod may refuse it to a user-tier mod;
+// a bearer credential is an OAuth login, which is how a subscription signs in (an API key or a gateway is not).
+export const isSubscriptionLogin = (identityKind: string | undefined, authKind: string | undefined): boolean =>
+  identityKind === 'claude.ai' || (identityKind === undefined && authKind === 'bearer')
+
+async function detectSubscription($: EngineInterface): Promise<boolean> {
+  const id: { kind?: unknown } | undefined = await $.session.identity().catch(() => undefined)
+  const identityKind = typeof id?.kind === 'string' && id.kind !== 'none' ? id.kind : undefined
+  const auth = identityKind === undefined ? await $.session.authorize().catch(() => null) : null
+  const isSub = isSubscriptionLogin(identityKind, auth?.kind)
+  $.ui.log(`login: identity ${identityKind ?? 'unavailable'}, credential ${auth?.kind ?? 'none'}, subscription ${isSub}`, { to: 'debug' })
+
+  return isSub
+}
+
 export const usableUsd = (cost: SessionCost | undefined): number | null => (cost && !cost.hasUnknownPrice ? cost.usd : null)
 
 const keepCost = ($: EngineInterface, cost: SessionCost | undefined) => update($, engineCost, () => usableUsd(cost))
@@ -292,6 +309,8 @@ export const register: Register = (on, options) => {
     const usage = await $.session.usage()
     await keepContext($, usage.context)
     await keepCost($, usage.cost)
+    const isSub = await detectSubscription($)
+    await update($, subscribed, () => isSub)
     await refresh($, usage.rateLimits)
     $.clock.every(30_000, () => void tick($))
 
@@ -351,7 +370,7 @@ export const register: Register = (on, options) => {
 
     if (ctx) lines.push(`ctx  ${ctx}`)
     if (c) lines.push(c.ttl ? `cache  ${c.ttl}, ${cacheText(c, now)}` : `cache  ${c.hit}% of the last request's input was a cache hit`)
-    const spend = spendOf(usage.rateLimits.length > 0, await read($, spent), usableUsd(usage.cost))
+    const spend = spendOf(usage.rateLimits.length > 0 || (await read($, subscribed)), await read($, spent), usableUsd(usage.cost))
     const rate = spend?.parts[spend.parts.length - 1]?.pricing
     if (spend && rate) {
       const when = hasPeak(rate) ? `, ${isPeak(rate, now) ? 'peak' : 'off-peak'} rate now` : ''
@@ -373,7 +392,7 @@ export const register: Register = (on, options) => {
     const hint = await next(e)
     const now = await read($, clock)
     const grid = cellsOf(list, ctx, c, now)
-    const tail = costOf(spendOf(all.length > 0, await read($, spent), await read($, engineCost)), now)
+    const tail = costOf(spendOf(all.length > 0 || (await read($, subscribed)), await read($, spent), await read($, engineCost)), now)
 
     if (grid.length === 0 && !tail) {
       return hint
