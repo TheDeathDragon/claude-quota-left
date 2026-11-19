@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, PluginOptions, Register, SessionCost, TurnUsage } from 'claude-code'
+import type { EngineInterface, PluginOptions, Register, SessionContextBreakdown, SessionContextUsage, SessionCost, TurnUsage } from 'claude-code'
 
 import type { Cache, CacheTtl, Context, Spent, Window } from '../types'
 
@@ -10,7 +10,7 @@ const TTL_MS: Record<CacheTtl, number> = { '5m': 300_000, '1h': 3_600_000 }
 
 const limits = atom({ plugin: 'quota-left', key: 'limits' } as const, [], { shape: 'limits-1' })
 const clock = atom({ plugin: 'quota-left', key: 'now' } as const, 0)
-const context = atom({ plugin: 'quota-left', key: 'context' } as const, null, { shape: 'context-1' })
+const context = atom({ plugin: 'quota-left', key: 'context' } as const, null, { shape: 'context-2' })
 const cache = atom({ plugin: 'quota-left', key: 'cache' } as const, null, { shape: 'cache-2' })
 const spent = atom({ plugin: 'quota-left', key: 'spent' } as const, null, { shape: 'spent-2' })
 const engineCost = atom({ plugin: 'quota-left', key: 'engineCost' } as const, null)
@@ -48,9 +48,19 @@ export const contextUsed = (c: Context): number | undefined =>
 export const contextLeft = (c: Context): string | undefined => {
   const pct = contextUsed(c)
   if (pct === undefined) return undefined
+  if (c.free !== undefined) return `${Math.round((c.free / c.window) * 100)}% left (${formatTokens(c.free)})`
   const tokens = c.tokens === undefined ? '' : ` (${formatTokens(Math.max(0, c.window - c.tokens))})`
 
   return `${100 - pct}% left${tokens}`
+}
+
+// The model's window overstates the room: compaction runs at a smaller window, less a buffer it keeps free.
+// The breakdown /context draws carries both, so the figures match it; without one, the model's window stands.
+export const contextFrom = (c: SessionContextUsage, b: SessionContextBreakdown | undefined): Context => {
+  if (!b) return { tokens: c.tokens, window: c.window, percent: c.percent }
+  const limit = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : b.rawMaxTokens
+
+  return { tokens: b.totalTokens, window: b.rawMaxTokens, percent: b.percentage, free: Math.max(0, limit - b.totalTokens) }
 }
 
 export const cacheLeftMs = (c: Cache, ttl: CacheTtl, now: number): number => c.at + TTL_MS[ttl] - now
@@ -262,8 +272,11 @@ export const usableUsd = (cost: SessionCost | undefined): number | null => (cost
 
 const keepCost = ($: EngineInterface, cost: SessionCost | undefined) => update($, engineCost, () => usableUsd(cost))
 
-const keepContext = ($: EngineInterface, c: Context) =>
-  update($, context, () => ({ tokens: c.tokens, window: c.window, percent: c.percent }))
+// `summary` estimates locally from the last response's usage: no token-count requests are sent.
+async function keepContext($: EngineInterface, c: SessionContextUsage) {
+  const usage = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined)
+  await update($, context, () => contextFrom(c, usage?.context.breakdown))
+}
 
 export const register: Register = (on, options) => {
   const own = pricingOf(options)

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cacheText, cellsOf, contextLeft, costOf, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
+import { cacheText, cellsOf, contextFrom, contextLeft, costOf, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
 
 const PRICING = pricingOf({ priceCacheHit: 0.04, priceCacheMiss: 2, priceOutput: 8, offPeakRatio: 0.5, peakHours: '9-12,14-18', peakUtcOffset: 8, currency: '¥' })
 
@@ -172,4 +172,15 @@ test('totals keep one figure per pricing source, the last one setting the peak m
   const spend = spendFrom({ totals: { 'deepseek-flash': 1.5, config: 0.25 }, last: 'deepseek-flash' }, pricingOf({ priceCacheMiss: 3 }))
   expect(spend!.parts.map(p => p.pricing.currency)).toEqual(['$', '¥'])
   expect(spendFrom({ totals: { gone: 1 }, last: 'gone' }, undefined)).toBe(undefined)
+})
+
+test('context left counts to auto-compaction, as /context shows it', async () => {
+  // The /context reading from a deepseek-flash[1m] session: 17.2k of a 786.4k compaction window, 33k buffer.
+  const breakdown = { totalTokens: 17_200, rawMaxTokens: 786_400, percentage: 2, autoCompactThreshold: 753_400, isAutoCompactEnabled: true } as never
+  const c = contextFrom({ tokens: 17_000, window: 1_000_000, percent: 2 }, breakdown)
+  expect(c).toEqual({ tokens: 17_200, window: 786_400, percent: 2, free: 736_200 })
+  expect(contextLeft(c)).toBe('94% left (736k)')
+  const off = contextFrom({ window: 1_000_000 }, { ...(breakdown as object), isAutoCompactEnabled: false } as never)
+  expect(off.free).toBe(769_200)
+  expect(contextFrom({ tokens: 17_000, window: 1_000_000, percent: 2 }, undefined)).toEqual({ tokens: 17_000, window: 1_000_000, percent: 2 })
 })

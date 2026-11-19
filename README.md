@@ -14,7 +14,7 @@ ctx   ████░░░░░░  38% 62% left (124k)      cache ███�
 | Row | Meaning |
 | --- | --- |
 | `5h`, `7d` | Share of the 5-hour and weekly subscription quota used, and when each window resets. Pro and Max plans only. A toast warns at 90%. |
-| `ctx` | Share of the context window used, and what is left in percent and tokens. |
+| `ctx` | Share of the context window used and what is left before auto-compaction, in percent and tokens. Counted against the auto-compact window, less its buffer, so the figures match `/context`. |
 | `cache` | On Claude: the main thread's prompt cache lifetime (`5m` or `1h`) and the time until it lapses; the bar is the share of that lifetime left, and once it reads `expired` the next message writes the cache again. On a provider that caches by itself and reports no lifetime (DeepSeek): the share of the last request's input served from cache. |
 | `cost` | Estimated cost of this session, on API billing only (see below). `peak` or `off` marks the current rate where prices differ by time of day. |
 
