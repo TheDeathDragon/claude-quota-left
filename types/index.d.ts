@@ -7,6 +7,9 @@ export type Cache = { at: number; ttl?: CacheTtl; hit: number }
 /** Cost so far per pricing source (`config` or a preset id), and the source the last request went at. */
 export type Spent = { totals: Record<string, number>; last: string }
 
+/** Main-thread generation speed: the last timed step's tokens per second, and the session's output tokens and generation time. */
+export type Speed = { last?: number; tokens: number; ms: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'quota-left': {
@@ -17,6 +20,7 @@ declare module 'claude-code' {
       spent: Shaped<Spent | null>
       engineCost: number | null
       subscribed: boolean
+      speed: Shaped<Speed | null>
     }
   }
 }

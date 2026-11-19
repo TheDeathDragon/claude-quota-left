@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register, SessionContextBreakdown, SessionContextUsage, SessionCost, TurnUsage } from 'claude-code'
 
-import type { Cache, CacheTtl, Context, Spent, Window } from '../types'
+import type { Cache, CacheTtl, Context, Speed, Spent, Window } from '../types'
 
 const LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 const CELLS = 10
@@ -15,6 +15,7 @@ const cache = atom({ plugin: 'quota-left', key: 'cache' } as const, null, { shap
 const spent = atom({ plugin: 'quota-left', key: 'spent' } as const, null, { shape: 'spent-2' })
 const engineCost = atom({ plugin: 'quota-left', key: 'engineCost' } as const, null)
 const subscribed = atom({ plugin: 'quota-left', key: 'subscribed' } as const, false)
+const speed = atom({ plugin: 'quota-left', key: 'speed' } as const, null, { shape: 'speed-1' })
 
 export const formatLeft = (ms: number): string => {
   const minutes = Math.max(0, Math.round(ms / 60_000))
@@ -203,7 +204,8 @@ export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, no
 }
 
 // Cost has no bar to fill, so it trails the last grid row instead of taking a cell of its own.
-export type Tail = { tone: string; value: string; detail: string }
+// `label` is left out where the value carries its own unit.
+export type Tail = { key: string; label?: string; tone: string; value: string; detail: string; isDetailDim?: boolean }
 
 export const costOf = (spend: Spend | undefined, now: number): Tail | undefined => {
   const rate = spend?.parts[spend.parts.length - 1]?.pricing
@@ -212,10 +214,41 @@ export const costOf = (spend: Spend | undefined, now: number): Tail | undefined 
   const peak = isPeak(rate, now)
 
   return {
+    key: 'cost',
+    label: 'cost',
     tone: !tiered ? 'subtle' : peak ? 'warning' : 'success',
     value: !tiered ? '' : peak ? 'peak' : 'off',
     detail: spend.parts.map(p => formatMoney(p.pricing, p.total)).join(' '),
   }
+}
+
+// A step too short to time, or a response that arrived in one piece, says nothing about speed.
+const MIN_TIMED_MS = 100
+// Below this many output tokens the speed of one step is mostly noise; it still counts toward the average.
+const MIN_LAST_TOKENS = 32
+
+// Generation speed: output tokens over the time from the first streamed piece to the end, so the wait
+// before the first token (queueing, prompt processing) is left out.
+export const nextSpeed = (prev: Speed | null, outputTokens: number, ms: number): Speed | null => {
+  if (ms < MIN_TIMED_MS || outputTokens <= 0) return prev
+  const tps = (outputTokens / ms) * 1000
+
+  return {
+    last: outputTokens >= MIN_LAST_TOKENS ? tps : prev?.last,
+    tokens: (prev?.tokens ?? 0) + outputTokens,
+    ms: (prev?.ms ?? 0) + ms,
+  }
+}
+
+export const averageTps = (sp: Speed): number => (sp.tokens / sp.ms) * 1000
+
+export const tpsOf = (sp: Speed | null): Tail | undefined => {
+  if (!sp || sp.ms <= 0) return undefined
+  const avg = Math.round(averageTps(sp))
+
+  return sp.last === undefined
+    ? { key: 'tps', tone: 'subtle', value: `${avg} tok/s`, detail: '' }
+    : { key: 'tps', tone: 'subtle', value: `${Math.round(sp.last)} tok/s`, detail: `avg ${avg} tok/s`, isDetailDim: true }
 }
 
 // A read renews the entry for the lifetime it was written with, so a read-only step keeps the last known TTL.
@@ -336,8 +369,21 @@ export const register: Register = (on, options) => {
 
   on('turn.step', async function* ($, e, next) {
     const at = await $.clock.now()
-    const result = yield* next(e)
+    const stream = next(e)
+    let firstAt: number | undefined
+
+    for await (const chunk of stream) {
+      if (firstAt === undefined) firstAt = await $.clock.now()
+      yield chunk
+    }
+
+    const result = await stream.result
     const usage = result.usage
+
+    if (usage && !e.agentId && firstAt !== undefined) {
+      const ms = (await $.clock.now()) - firstAt
+      await update($, speed, prev => nextSpeed(prev, usage.output_tokens, ms))
+    }
 
     const priced = usage && costOn ? pricingFor(configured, usage.model) : undefined
 
@@ -376,6 +422,11 @@ export const register: Register = (on, options) => {
       const when = hasPeak(rate) ? `, ${isPeak(rate, now) ? 'peak' : 'off-peak'} rate now` : ''
       lines.push(`cost  ${spend.parts.map(p => formatMoney(p.pricing, p.total)).join(' ')} est.${when}`)
     }
+    const sp = await read($, speed)
+    if (sp && sp.ms > 0) {
+      const last = sp.last === undefined ? '' : `${Math.round(sp.last)} tok/s last, `
+      lines.push(`tps  ${last}${Math.round(averageTps(sp))} tok/s average`)
+    }
 
     if (lines.length === 0) {
       return { text: 'No reading yet: figures arrive after the first reply.' }
@@ -392,9 +443,10 @@ export const register: Register = (on, options) => {
     const hint = await next(e)
     const now = await read($, clock)
     const grid = cellsOf(list, ctx, c, now)
-    const tail = costOf(spendOf(all.length > 0 || (await read($, subscribed)), await read($, spent), await read($, engineCost)), now)
+    const cost = costOf(spendOf(all.length > 0 || (await read($, subscribed)), await read($, spent), await read($, engineCost)), now)
+    const tails = [cost, tpsOf(await read($, speed))].filter((t): t is Tail => t !== undefined)
 
-    if (grid.length === 0 && !tail) {
+    if (grid.length === 0 && tails.length === 0) {
       return hint
     }
 
@@ -425,13 +477,14 @@ export const register: Register = (on, options) => {
                   </Box>
                 </Box>
               ))}
-              {tail && i === rows.length - 1 && (
-                <Box key="cost" flexDirection="row" columnGap={1}>
-                  <Text dimColor>cost</Text>
-                  {tail.value !== '' && <Text color={tail.tone}>{tail.value}</Text>}
-                  <Text>{tail.detail}</Text>
-                </Box>
-              )}
+              {i === rows.length - 1 &&
+                tails.map(t => (
+                  <Box key={t.key} flexDirection="row" columnGap={1}>
+                    {t.label && <Text dimColor>{t.label}</Text>}
+                    {t.value !== '' && <Text color={t.tone}>{t.value}</Text>}
+                    {t.detail !== '' && <Text dimColor={t.isDetailDim}>{t.detail}</Text>}
+                  </Box>
+                ))}
             </Box>
           ))}
         </Box>

@@ -17,8 +17,9 @@ ctx   ████░░░░░░  38% 62% left (124k)      cache ███�
 | `ctx` | Share of the context window used and what is left before auto-compaction, in percent and tokens. Counted against the auto-compact window, less its buffer, so the figures match `/context`. |
 | `cache` | On Claude: the main thread's prompt cache lifetime (`5m` or `1h`) and the time until it lapses; the bar is the share of that lifetime left, and once it reads `expired` the next message writes the cache again. On a provider that caches by itself and reports no lifetime (DeepSeek): the share of the last request's input served from cache. |
 | `cost` | Estimated cost of this session, on API billing only (see below). `peak` or `off` marks the current rate where prices differ by time of day. |
+| `100 tok/s avg 90 tok/s` | Generation speed of the main thread: the last request with at least 32 output tokens, then the session average weighted by tokens. Timed from the first streamed token to the end, so the wait before the first token is left out. |
 
-`/quota` prints the same figures as text.
+`/quota` prints the same figures as text. Cost and speed trail the last row, as they have no bar.
 
 ### How the cache countdown works
 

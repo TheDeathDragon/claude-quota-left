@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cacheText, cellsOf, contextFrom, contextLeft, costOf, isSubscriptionLogin, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
+import { averageTps, cacheText, cellsOf, contextFrom, contextLeft, costOf, isSubscriptionLogin, nextSpeed, tpsOf, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
 
 const PRICING = pricingOf({ priceCacheHit: 0.04, priceCacheMiss: 2, priceOutput: 8, offPeakRatio: 0.5, peakHours: '9-12,14-18', peakUtcOffset: 8, currency: '¥' })
 
@@ -109,7 +109,7 @@ test('a step costs hits, misses, writes and output at the rate of its hour', asy
 
 test('the cost tail says which rate is on', async () => {
   const now = Date.parse('2026-11-19T02:00:00Z')
-  expect(costOf({ parts: [{ pricing: PRICING, total: 1.2345 }] }, now)).toEqual({ tone: 'warning', value: 'peak', detail: '¥1.23' })
+  expect(costOf({ parts: [{ pricing: PRICING, total: 1.2345 }] }, now)).toEqual({ key: 'cost', label: 'cost', tone: 'warning', value: 'peak', detail: '¥1.23' })
   const off = costOf({ parts: [{ pricing: PRICING, total: 0.01234 }] }, Date.parse('2026-11-21T02:00:00Z'))
   expect(off!.value).toBe('off')
   expect(off!.detail).toBe('¥0.0123')
@@ -191,4 +191,21 @@ test('a subscription login hides cost before any quota reading arrives', async (
   expect(isSubscriptionLogin('api-key', 'bearer')).toBe(false)
   expect(isSubscriptionLogin(undefined, 'api-key')).toBe(false)
   expect(isSubscriptionLogin(undefined, undefined)).toBe(false)
+})
+
+test('tps times generation only, keeps the last real step and a token-weighted average', async () => {
+  const a = nextSpeed(null, 400, 10_000)
+  expect(a).toEqual({ last: 40, tokens: 400, ms: 10_000 })
+  // A short tool call: counted in the average, too noisy to be the last reading.
+  const b = nextSpeed(a, 10, 500)
+  expect(b).toEqual({ last: 40, tokens: 410, ms: 10_500 })
+  // A response that arrived in one piece cannot be timed.
+  expect(nextSpeed(b, 300, 20)).toEqual(b)
+  const c = nextSpeed(b, 1200, 20_000)
+  expect(c!.last).toBe(60)
+  expect(Math.round(averageTps(c!))).toBe(53)
+  expect(tpsOf(c)).toEqual({ key: 'tps', tone: 'subtle', value: '60 tok/s', detail: 'avg 53 tok/s', isDetailDim: true })
+  // No step long enough to read alone yet: the average stands in, once.
+  expect(tpsOf(nextSpeed(null, 10, 500))).toEqual({ key: 'tps', tone: 'subtle', value: '20 tok/s', detail: '' })
+  expect(tpsOf(null)).toBe(undefined)
 })
