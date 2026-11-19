@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cacheText, cellsOf, contextLeft, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
+import { cacheText, cellsOf, contextLeft, costOf, engineSpend, filled, formatLeft, isPeak, nextCache, pricingFor, pricingOf, spendFrom, stepCost, timeLeft, usableUsd } from './register'
 
 const PRICING = pricingOf({ priceCacheHit: 0.04, priceCacheMiss: 2, priceOutput: 8, offPeakRatio: 0.5, peakHours: '9-12,14-18', peakUtcOffset: 8, currency: '¥' })
 
@@ -80,9 +80,8 @@ test('every cell fits the fixed columns, so the rows line up', async () => {
     { tokens: 0, window: 1_000_000, percent: 0 },
     { at: now, ttl: '1h', hit: 99 },
     now,
-    { parts: [{ pricing: PRICING, total: 1234.5678 }] },
   )
-  expect(grid.map(c => c.key)).toEqual(['five_hour', 'seven_day', 'ctx', 'cache', 'cost'])
+  expect(grid.map(c => c.key)).toEqual(['five_hour', 'seven_day', 'ctx', 'cache'])
   for (const c of grid) {
     expect(c.label.length <= 5).toBe(true)
     expect(c.value.length <= 4).toBe(true)
@@ -108,11 +107,10 @@ test('a step costs hits, misses, writes and output at the rate of its hour', asy
   expect(Math.abs(off - peak / 2) < 1e-9).toBe(true)
 })
 
-test('the cost cell keeps the columns and says which rate is on', async () => {
+test('the cost tail says which rate is on', async () => {
   const now = Date.parse('2026-11-19T02:00:00Z')
-  const [cell] = cellsOf([], null, null, now, { parts: [{ pricing: PRICING, total: 1.2345 }] })
-  expect(cell).toEqual({ key: 'cost', label: 'cost', tone: 'warning', value: 'peak', detail: '¥1.23' })
-  const [off] = cellsOf([], null, null, Date.parse('2026-11-21T02:00:00Z'), { parts: [{ pricing: PRICING, total: 0.01234 }] })
+  expect(costOf({ parts: [{ pricing: PRICING, total: 1.2345 }] }, now)).toEqual({ tone: 'warning', value: 'peak', detail: '¥1.23' })
+  const off = costOf({ parts: [{ pricing: PRICING, total: 0.01234 }] }, Date.parse('2026-11-21T02:00:00Z'))
   expect(off!.value).toBe('off')
   expect(off!.detail).toBe('¥0.0123')
 })
@@ -122,7 +120,7 @@ test('a flat price shows no peak marker and costs the same at every hour', async
   const u = { input_tokens: 1_000_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0, model: 'm' }
   expect(stepCost(flat, u, Date.parse('2026-11-19T02:00:00Z'))).toBe(3)
   expect(stepCost(flat, u, Date.parse('2026-11-21T02:00:00Z'))).toBe(3)
-  const [cell] = cellsOf([], null, null, Date.parse('2026-11-19T02:00:00Z'), { parts: [{ pricing: flat, total: 3 }] })
+  const cell = costOf({ parts: [{ pricing: flat, total: 3 }] }, Date.parse('2026-11-19T02:00:00Z'))
   expect(cell!.value).toBe('')
   expect(cell!.detail).toBe('$3.00')
 })
@@ -164,7 +162,7 @@ test('DeepSeek flash is priced by its preset, with or without a gateway prefix',
 test("cost falls back to Claude Code's own ledger, unless it priced an unknown model", async () => {
   expect(usableUsd({ usd: 0.42 })).toBe(0.42)
   expect(usableUsd({ usd: 0.42, hasUnknownPrice: true })).toBe(null)
-  const [cell] = cellsOf([], null, null, Date.parse('2026-11-19T02:00:00Z'), engineSpend(0.42))
+  const cell = costOf(engineSpend(0.42), Date.parse('2026-11-19T02:00:00Z'))
   expect(cell!.detail).toBe('$0.4200')
   expect(cell!.value).toBe('')
   expect(engineSpend(null)).toBe(undefined)

@@ -135,7 +135,7 @@ const LABEL_W = 5
 const VALUE_W = 4
 const DETAIL_W = 16
 
-export type Cell = { key: string; label: string; fill?: number; tone: string; value: string; detail: string; detailTone?: string }
+export type Cell = { key: string; label: string; fill: number; tone: string; value: string; detail: string; detailTone?: string }
 
 // Totals per pricing source, the last one used last: its rate is the one the peak marker shows.
 export type Spend = { parts: { pricing: Pricing; total: number }[] }
@@ -158,7 +158,7 @@ export const spendFrom = (s: Spent | null, configured: Pricing | undefined): Spe
 export const engineSpend = (usd: number | null): Spend | undefined =>
   usd !== null && usd > 0 ? { parts: [{ pricing: FLAT_USD, total: usd }] } : undefined
 
-export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, now: number, spend?: Spend): Cell[] => {
+export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, now: number): Cell[] => {
   const grid: Cell[] = list.map(w => ({
     key: w.kind,
     label: LABELS[w.kind] ?? w.kind,
@@ -188,21 +188,23 @@ export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, no
     grid.push({ key: 'cache', label: 'cache', fill: c.hit, tone: toneOf(100 - c.hit), value: `${c.hit}%`, detail: 'hit rate' })
   }
 
-  const rate = spend?.parts[spend.parts.length - 1]?.pricing
-
-  if (spend && rate) {
-    const peak = isPeak(rate, now)
-    const tiered = hasPeak(rate)
-    grid.push({
-      key: 'cost',
-      label: 'cost',
-      tone: !tiered ? 'subtle' : peak ? 'warning' : 'success',
-      value: !tiered ? '' : peak ? 'peak' : 'off',
-      detail: spend.parts.map(p => formatMoney(p.pricing, p.total)).join(' '),
-    })
-  }
-
   return grid
+}
+
+// Cost has no bar to fill, so it trails the last grid row instead of taking a cell of its own.
+export type Tail = { tone: string; value: string; detail: string }
+
+export const costOf = (spend: Spend | undefined, now: number): Tail | undefined => {
+  const rate = spend?.parts[spend.parts.length - 1]?.pricing
+  if (!spend || !rate) return undefined
+  const tiered = hasPeak(rate)
+  const peak = isPeak(rate, now)
+
+  return {
+    tone: !tiered ? 'subtle' : peak ? 'warning' : 'success',
+    value: !tiered ? '' : peak ? 'peak' : 'off',
+    detail: spend.parts.map(p => formatMoney(p.pricing, p.total)).join(' '),
+  }
 }
 
 // A read renews the entry for the lifetime it was written with, so a read-only step keeps the last known TTL.
@@ -357,34 +359,32 @@ export const register: Register = (on, options) => {
     const c = await read($, cache)
     const hint = await next(e)
     const now = await read($, clock)
-    const grid = cellsOf(list, ctx, c, now, spendOf(all.length > 0, await read($, spent), await read($, engineCost)))
+    const grid = cellsOf(list, ctx, c, now)
+    const tail = costOf(spendOf(all.length > 0, await read($, spent), await read($, engineCost)), now)
 
-    if (grid.length === 0) {
+    if (grid.length === 0 && !tail) {
       return hint
     }
 
     const { Box, Text } = $.ui.resolve(e)
     const rows = grid.reduce<Cell[][]>((acc, cell, i) => (i % 2 ? acc[acc.length - 1]!.push(cell) : acc.push([cell]), acc), [])
+    if (rows.length === 0) rows.push([])
 
     return (
       <Box flexDirection="column">
         {hint}
         <Box flexDirection="column" marginTop={1}>
-          {rows.map(row => (
-            <Box key={row[0]!.key} flexDirection="row" columnGap={3} flexWrap="wrap">
+          {rows.map((row, i) => (
+            <Box key={row[0]?.key ?? 'tail'} flexDirection="row" columnGap={3} flexWrap="wrap">
               {row.map(cell => (
                 <Box key={cell.key} flexDirection="row" columnGap={1}>
                   <Box width={LABEL_W}>
                     <Text dimColor>{cell.label}</Text>
                   </Box>
-                  {cell.fill === undefined ? (
-                    <Box width={CELLS} />
-                  ) : (
-                    <Text>
-                      <Text color={cell.tone}>{'█'.repeat(cells(cell.fill))}</Text>
-                      <Text color="subtle">{'░'.repeat(CELLS - cells(cell.fill))}</Text>
-                    </Text>
-                  )}
+                  <Text>
+                    <Text color={cell.tone}>{'█'.repeat(cells(cell.fill))}</Text>
+                    <Text color="subtle">{'░'.repeat(CELLS - cells(cell.fill))}</Text>
+                  </Text>
                   <Box width={VALUE_W} justifyContent="flex-end">
                     <Text color={cell.tone}>{cell.value}</Text>
                   </Box>
@@ -393,6 +393,13 @@ export const register: Register = (on, options) => {
                   </Box>
                 </Box>
               ))}
+              {tail && i === rows.length - 1 && (
+                <Box key="cost" flexDirection="row" columnGap={1}>
+                  <Text dimColor>cost</Text>
+                  {tail.value !== '' && <Text color={tail.tone}>{tail.value}</Text>}
+                  <Text>{tail.detail}</Text>
+                </Box>
+              )}
             </Box>
           ))}
         </Box>
