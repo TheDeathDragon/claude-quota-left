@@ -4,7 +4,7 @@ import type { EngineInterface, PluginOptions, Register, SessionContextBreakdown,
 import type { Cache, CacheTtl, Context, Speed, Spent, Window } from '../types'
 
 const LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
-const CELLS = 10
+const CELLS = 15
 const WARN_AT = 90
 const TTL_MS: Record<CacheTtl, number> = { '5m': 300_000, '1h': 3_600_000 }
 
@@ -170,15 +170,9 @@ export const spendFrom = (s: Spent | null, configured: Pricing | undefined): Spe
 export const engineSpend = (usd: number | null): Spend | undefined =>
   usd !== null && usd > 0 ? { parts: [{ pricing: FLAT_USD, total: usd }] } : undefined
 
+// This session's rows (ctx, cache) come first, the account's quota windows after them.
 export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, now: number): Cell[] => {
-  const grid: Cell[] = list.map(w => ({
-    key: w.kind,
-    label: LABELS[w.kind] ?? w.kind,
-    fill: used(w),
-    tone: toneOf(used(w)),
-    value: `${Math.round(used(w))}%`,
-    detail: timeLeft(w, now) ?? '',
-  }))
+  const grid: Cell[] = []
   const ctxUsed = ctx ? contextUsed(ctx) : undefined
 
   if (ctx && ctxUsed !== undefined) {
@@ -198,6 +192,17 @@ export const cellsOf = (list: Window[], ctx: Context | null, c: Cache | null, no
     })
   } else if (c) {
     grid.push({ key: 'cache', label: 'cache', fill: c.hit, tone: toneOf(100 - c.hit), value: `${c.hit}%`, detail: 'hit rate' })
+  }
+
+  for (const w of list) {
+    grid.push({
+      key: w.kind,
+      label: LABELS[w.kind] ?? w.kind,
+      fill: used(w),
+      tone: toneOf(used(w)),
+      value: `${Math.round(used(w))}%`,
+      detail: timeLeft(w, now) ?? '',
+    })
   }
 
   return grid

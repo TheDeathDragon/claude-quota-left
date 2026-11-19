@@ -1,6 +1,6 @@
 {
   "name": "quota-left",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Subscription quota, context left, prompt cache expiry and API cost under the Claude Code prompt, plus /quota",
   "author": { "name": "TheDeathDragon" },
   "repository": "https://github.com/TheDeathDragon/claude-quota-left",

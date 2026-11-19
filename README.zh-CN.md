@@ -5,8 +5,8 @@
 一个 Claude Code 插件（mod），在输入框下方显示剩余的订阅额度、上下文窗口、提示词缓存有效期，以及按 API 计费时本次会话的费用。
 
 ```
-5h    ██░░░░░░░░  23% resets in 2h13m      7d    ██████░░░░  60% resets in 3d4h
-ctx   ████░░░░░░  38% 62% left (124k)      cache ███████░░░   1h expires in 42m
+ctx   ██████░░░░░░░░░  38% 62% left (124k)    cache ██████████░░░░░   1h expires in 42m
+5h    ███░░░░░░░░░░░░  23% resets in 2h13m    7d    █████████░░░░░░  60% resets in 3d4h     91 tok/s avg 88 tok/s
 ```
 
 ## 显示内容

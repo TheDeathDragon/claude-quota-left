@@ -18,8 +18,8 @@ test('countdowns read in days, hours and minutes', async () => {
 })
 
 test('a bar fills with what is used', async () => {
-  expect(filled({ kind: 'five_hour', percentUsed: 23.5 })).toBe(2)
-  expect(filled({ kind: 'five_hour', percentUsed: 100 })).toBe(10)
+  expect(filled({ kind: 'five_hour', percentUsed: 23.5 })).toBe(4)
+  expect(filled({ kind: 'five_hour', percentUsed: 100 })).toBe(15)
   expect(timeLeft({ kind: 'seven_day', percentUsed: 1, resetsAt: '2026-11-06T12:13:00Z' }, Date.parse('2026-11-06T10:00:00Z'))).toBe('resets in 2h13m')
 })
 
@@ -81,7 +81,7 @@ test('every cell fits the fixed columns, so the rows line up', async () => {
     { at: now, ttl: '1h', hit: 99 },
     now,
   )
-  expect(grid.map(c => c.key)).toEqual(['five_hour', 'seven_day', 'ctx', 'cache'])
+  expect(grid.map(c => c.key)).toEqual(['ctx', 'cache', 'five_hour', 'seven_day'])
   for (const c of grid) {
     expect(c.label.length <= 5).toBe(true)
     expect(c.value.length <= 4).toBe(true)

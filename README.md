@@ -5,8 +5,8 @@
 A Claude Code mod that draws what you have left under the prompt: subscription quota, context window, prompt cache lifetime, and, on API billing, the session's cost.
 
 ```
-5h    ██░░░░░░░░  23% resets in 2h13m      7d    ██████░░░░  60% resets in 3d4h
-ctx   ████░░░░░░  38% 62% left (124k)      cache ███████░░░   1h expires in 42m
+ctx   ██████░░░░░░░░░  38% 62% left (124k)    cache ██████████░░░░░   1h expires in 42m
+5h    ███░░░░░░░░░░░░  23% resets in 2h13m    7d    █████████░░░░░░  60% resets in 3d4h     91 tok/s avg 88 tok/s
 ```
 
 ## What it shows
