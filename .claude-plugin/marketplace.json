@@ -1,0 +1,5 @@
+{
+  "name": "quota-left",
+  "owner": { "name": "TheDeathDragon" },
+  "plugins": [{ "name": "quota-left", "source": "./", "description": "Subscription quota, context left, prompt cache expiry and API cost under the Claude Code prompt" }]
+}

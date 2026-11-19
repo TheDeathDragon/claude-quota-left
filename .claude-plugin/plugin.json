@@ -1,0 +1,20 @@
+{
+  "name": "quota-left",
+  "version": "0.5.0",
+  "description": "Subscription quota, context left, prompt cache expiry and API cost under the Claude Code prompt, plus /quota",
+  "author": { "name": "TheDeathDragon" },
+  "repository": "https://github.com/TheDeathDragon/claude-quota-left",
+  "license": "MIT",
+  "keywords": ["quota", "rate-limit", "context", "prompt-cache", "cost", "status"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cost": { "type": "boolean", "title": "Show API cost", "description": "Shown only when no subscription quota is reported", "default": true },
+    "currency": { "type": "string", "title": "Currency symbol", "description": "Prefix for the cost figure", "default": "$" },
+    "priceCacheHit": { "type": "number", "title": "Cache-hit input price", "description": "Per million tokens, at the peak rate; any price above 0 replaces the built-in presets", "default": 0 },
+    "priceCacheMiss": { "type": "number", "title": "Cache-miss input price", "description": "Per million tokens, at the peak rate; cache writes are billed at it too", "default": 0 },
+    "priceOutput": { "type": "number", "title": "Output price", "description": "Per million tokens, at the peak rate; any price above 0 replaces the built-in presets", "default": 0 },
+    "offPeakRatio": { "type": "number", "title": "Off-peak ratio", "description": "Off-peak price as a share of peak; 1 for a flat price", "default": 1 },
+    "peakHours": { "type": "string", "title": "Peak hours", "description": "Weekday hours at the peak rate, e.g. 9-12,14-18", "default": "" },
+    "peakUtcOffset": { "type": "number", "title": "Peak hours UTC offset", "description": "Time zone the peak hours are in, in hours from UTC", "default": 8 }
+  }
+}
